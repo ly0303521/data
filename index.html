@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>牙冠点云与深度图展示</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #1a1a1f; color: #e8e8ec; }
+  header { padding: 20px 28px; background: #23232b; border-bottom: 1px solid #33333d; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header p { font-size: 13px; color: #9a9aa5; margin-top: 4px; }
+  .container { display: flex; flex-wrap: wrap; gap: 20px; padding: 20px 28px; }
+
+  /* 3D 点云区 */
+  .viewer-panel { flex: 1 1 560px; background: #23232b; border-radius: 10px; overflow: hidden; }
+  .panel-title { padding: 12px 18px; font-size: 15px; font-weight: 600; border-bottom: 1px solid #33333d; display: flex; justify-content: space-between; align-items: center; }
+  #viewer { width: 100%; height: 520px; display: block; background: radial-gradient(circle at 50% 40%, #2b2b35, #16161b); }
+  .controls { padding: 10px 18px; font-size: 12px; color: #9a9aa5; border-top: 1px solid #33333d; }
+  select { background: #33333d; color: #e8e8ec; border: 1px solid #44444f; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+
+  /* 图片画廊区 */
+  .gallery-panel { flex: 1 1 380px; background: #23232b; border-radius: 10px; overflow: hidden; }
+  .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 18px; max-height: 560px; overflow-y: auto; }
+  .gallery figure { background: #16161b; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform .15s; }
+  .gallery figure:hover { transform: scale(1.03); }
+  .gallery img { width: 100%; height: 130px; object-fit: cover; display: block; }
+  .gallery figcaption { padding: 6px 8px; font-size: 11px; color: #9a9aa5; word-break: break-all; }
+
+  /* 灯箱 */
+  #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.9); display: none; align-items: center; justify-content: center; z-index: 100; }
+  #lightbox img { max-width: 92%; max-height: 92%; border-radius: 6px; }
+  #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #9a9aa5; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>牙冠 3D 点云与深度图展示</h1>
+  <p>左侧鼠标拖动旋转 / 滚轮缩放 / 右键平移 · 右侧点击图片放大</p>
+</header>
+
+<div class="container">
+  <!-- 3D 点云查看器 -->
+  <div class="viewer-panel">
+    <div class="panel-title">
+      <span>3D 点云</span>
+      <select id="modelSelect"></select>
+    </div>
+    <div style="position:relative;">
+      <canvas id="viewer"></canvas>
+      <div id="loading">加载中…</div>
+    </div>
+    <div class="controls">提示：点云文件较大时首次加载需等待几秒</div>
+  </div>
+
+  <!-- 图片画廊 -->
+  <div class="gallery-panel">
+    <div class="panel-title"><span>深度图 / 预览图</span></div>
+    <div class="gallery" id="gallery"></div>
+  </div>
+</div>
+
+<div id="lightbox"><img id="lightbox-img" src="" alt=""></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+
+// ====== 配置：把你的点云 PLY 和图片文件名填在这里（与 index.html 同目录）======
+const MODELS = [
+  'cube_tooth_from_depth.ply',
+];
+const IMAGES = [
+  'depth/standard_molar.png',
+  'depth/well_defined_anatomy.png',
+  'depth/shallow_grooves_rounded_cusps.png',
+  'depth/smooth_worn_surface.png',
+];
+// ============================================================================
+
+const canvas = document.getElementById('viewer');
+const loadingEl = document.getElementById('loading');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
+camera.position.set(0, 0, 5);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+
+let currentPoints = null;
+const loader = new PLYLoader();
+
+function loadModel(url) {
+  loadingEl.style.display = 'block';
+  loadingEl.textContent = '加载中…';
+  if (currentPoints) { scene.remove(currentPoints); currentPoints.geometry.dispose(); currentPoints.material.dispose(); }
+  loader.load(url, (geometry) => {
+    geometry.computeBoundingBox();
+    geometry.center();
+    // 根据是否有顶点颜色决定材质
+    const hasColor = geometry.hasAttribute('color');
+    const material = new THREE.PointsMaterial({ size: 0.02, vertexColors: hasColor });
+    if (!hasColor) material.color.set(0x66ccff);
+    currentPoints = new THREE.Points(geometry, material);
+    scene.add(currentPoints);
+    // 自动调整相机距离
+    const size = geometry.boundingBox.getSize(new THREE.Vector3()).length();
+    camera.position.set(0, 0, size * 1.2);
+    controls.target.set(0, 0, 0);
+    controls.update();
+    // 按包围盒自适应点大小
+    material.size = size / 400;
+    loadingEl.style.display = 'none';
+  }, undefined, (err) => {
+    loadingEl.textContent = '加载失败：' + url;
+    console.error(err);
+  });
+}
+
+// 下拉框
+const sel = document.getElementById('modelSelect');
+MODELS.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
+sel.addEventListener('change', () => loadModel(sel.value));
+if (MODELS.length) loadModel(MODELS[0]);
+
+// 图片画廊
+const gallery = document.getElementById('gallery');
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+IMAGES.forEach(src => {
+  const fig = document.createElement('figure');
+  const img = document.createElement('img');
+  img.src = src; img.alt = src; img.loading = 'lazy';
+  img.onerror = () => { fig.style.display = 'none'; };  // 文件不存在则隐藏
+  const cap = document.createElement('figcaption');
+  cap.textContent = src;
+  fig.appendChild(img); fig.appendChild(cap);
+  fig.addEventListener('click', () => { lightboxImg.src = src; lightbox.style.display = 'flex'; });
+  gallery.appendChild(fig);
+});
+lightbox.addEventListener('click', () => { lightbox.style.display = 'none'; });
+
+function animate() {
+  requestAnimationFrame(animate);
+  resize();
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
