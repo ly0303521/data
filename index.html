@@ -21,7 +21,9 @@
 
   /* 图片画廊区 */
   .gallery-panel { flex: 1 1 380px; background: #23232b; border-radius: 10px; overflow: hidden; }
-  .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 18px; max-height: 560px; overflow-y: auto; }
+  .gallery { padding: 18px; max-height: 560px; overflow-y: auto; }
+  .group-title { font-size: 14px; font-weight: 600; color: #c8c8d0; margin: 4px 0 10px; padding-left: 4px; border-left: 3px solid #66ccff; }
+  .group-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
   .gallery figure { background: #16161b; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform .15s; }
   .gallery figure:hover { transform: scale(1.03); }
   .gallery img { width: 100%; height: 130px; object-fit: cover; display: block; }
@@ -78,12 +80,34 @@ import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 // ====== 配置：把你的点云 PLY 和图片文件名填在这里（与 index.html 同目录）======
 const MODELS = [
   'cube_tooth_from_depth.ply',
+  'cube_tooth_from_depth_2.ply',
 ];
-const IMAGES = [
-  'depth/standard_molar.png',
-  'depth/well_defined_anatomy.png',
-  'depth/shallow_grooves_rounded_cusps.png',
-  'depth/smooth_worn_surface.png',
+// 两组图片：生成图 / 训练图
+const IMAGE_GROUPS = [
+  {
+    title: '生成图',
+    images: [
+      '生成图/standard_molar.png',
+      '生成图/well_defined_anatomy.png',
+      '生成图/shallow_grooves_rounded_cusps.png',
+      '生成图/smooth_worn_surface.png',
+    ],
+  },
+  {
+    title: '训练图',
+    images: [
+      '训练图/22792_fdi16_point_cloud_depth.png',
+      '训练图/22793_fdi16_point_cloud_depth.png',
+      '训练图/22794_fdi16_point_cloud_depth.png',
+      '训练图/22795_fdi16_point_cloud_depth.png',
+      '训练图/22796_fdi16_point_cloud_depth.png',
+      '训练图/22797_fdi16_point_cloud_depth.png',
+      '训练图/22798_fdi16_point_cloud_depth.png',
+      '训练图/22799_fdi16_point_cloud_depth.png',
+      '训练图/22800_fdi16_point_cloud_depth.png',
+      '训练图/22801_fdi16_point_cloud_depth.png',
+    ],
+  },
 ];
 // ============================================================================
 
@@ -138,23 +162,33 @@ function loadModel(url) {
 // 下拉框
 const sel = document.getElementById('modelSelect');
 MODELS.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
-sel.addEventListener('change', () => loadModel(sel.value));
-if (MODELS.length) loadModel(MODELS[0]);
+sel.addEventListener('change', () => loadModel(encodeURI(sel.value)));
+if (MODELS.length) loadModel(encodeURI(MODELS[0]));
 
-// 图片画廊
+// 图片画廊（分组）
 const gallery = document.getElementById('gallery');
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
-IMAGES.forEach(src => {
-  const fig = document.createElement('figure');
-  const img = document.createElement('img');
-  img.src = src; img.alt = src; img.loading = 'lazy';
-  img.onerror = () => { fig.style.display = 'none'; };  // 文件不存在则隐藏
-  const cap = document.createElement('figcaption');
-  cap.textContent = src;
-  fig.appendChild(img); fig.appendChild(cap);
-  fig.addEventListener('click', () => { lightboxImg.src = src; lightbox.style.display = 'flex'; });
-  gallery.appendChild(fig);
+IMAGE_GROUPS.forEach(group => {
+  const heading = document.createElement('div');
+  heading.className = 'group-title';
+  heading.textContent = group.title;
+  gallery.appendChild(heading);
+  const grid = document.createElement('div');
+  grid.className = 'group-grid';
+  gallery.appendChild(grid);
+  group.images.forEach(src => {
+    const url = encodeURI(src);
+    const fig = document.createElement('figure');
+    const img = document.createElement('img');
+    img.src = url; img.alt = src; img.loading = 'lazy';
+    img.onerror = () => { fig.style.display = 'none'; };  // 文件不存在则隐藏
+    const cap = document.createElement('figcaption');
+    cap.textContent = src.split('/').pop();
+    fig.appendChild(img); fig.appendChild(cap);
+    fig.addEventListener('click', () => { lightboxImg.src = url; lightbox.style.display = 'flex'; });
+    grid.appendChild(fig);
+  });
 });
 lightbox.addEventListener('click', () => { lightbox.style.display = 'none'; });
 
